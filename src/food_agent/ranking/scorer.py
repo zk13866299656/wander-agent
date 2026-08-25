@@ -6,8 +6,15 @@ WEIGHTS = {"rating": 0.30, "heat": 0.20, "distance": 0.20, "budget": 0.15, "pref
 NEUTRAL_RATING = 2.5   # 无评分时的中性分（0-5 中点）
 MAX_DISTANCE_M = 5000  # 距离衰减上限
 
+def _text(p: Poi) -> str:
+    return f"{p.name} {p.category or ''} {' '.join(p.tags)}"
+
 def _rating_score(p: Poi) -> float:
-    return (p.rating if p.rating is not None else NEUTRAL_RATING) / 5.0
+    if p.rating is not None:
+        return p.rating / 5.0
+    if p.review_count is not None:
+        return _heat_score(p)
+    return NEUTRAL_RATING / 5.0
 
 def _heat_score(p: Poi) -> float:
     if p.review_count is None:
@@ -20,7 +27,7 @@ def _distance_score(p: Poi) -> float:
     return max(0.0, 1.0 - p.distance_m / MAX_DISTANCE_M)
 
 def _budget_score(p: Poi, req: ParsedRequest) -> float:
-    if req.budget_max is None or p.avg_price is None:
+    if req.budget_max is None or req.budget_max <= 0 or p.avg_price is None:
         return 1.0
     if p.avg_price <= req.budget_max:
         return 1.0
@@ -29,7 +36,7 @@ def _budget_score(p: Poi, req: ParsedRequest) -> float:
 def _preference_score(p: Poi, req: ParsedRequest) -> float:
     if not req.preferences:
         return 1.0
-    text = f"{p.name} {p.category or ''} {' '.join(p.tags)}"
+    text = _text(p)
     hits = sum(1 for pref in req.preferences if pref in text)
     return hits / len(req.preferences)
 
@@ -42,7 +49,7 @@ def score_candidate(p: Poi, req: ParsedRequest) -> Candidate:
         + WEIGHTS["preference"] * _preference_score(p, req)
     )
     if req.diet_taboos:
-        text = f"{p.name} {p.category or ''} {' '.join(p.tags)}"
+        text = _text(p)
         if any(t in text for t in req.diet_taboos):
             score *= 0.3
     return Candidate(**p.model_dump(), score=round(score, 4))

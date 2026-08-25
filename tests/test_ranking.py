@@ -37,3 +37,15 @@ def test_top_k_limit():
     req = ParsedRequest(location="x")
     pois = [_poi(str(i), rating=4.0, distance_m=1000) for i in range(20)]
     assert len(rank(pois, req, top_k=5)) == 5
+
+def test_diet_taboo_penalized():
+    req = ParsedRequest(location="x", diet_taboos=["猪肉"])
+    taboo = _poi("taboo", rating=4.5, review_count=100, distance_m=1000, tags=["含猪肉"])
+    clean = _poi("clean", rating=4.5, review_count=100, distance_m=1000, tags=[])
+    assert rank([taboo, clean], req)[0].name == "clean"
+
+def test_rating_fallback_to_heat():
+    req = ParsedRequest(location="x")
+    hot = _poi("hot", rating=None, review_count=1000, distance_m=1000)
+    cold = _poi("cold", rating=None, review_count=None, distance_m=1000)
+    assert rank([hot, cold], req)[0].name == "hot"
