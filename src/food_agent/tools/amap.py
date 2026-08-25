@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 import httpx
+
 from food_agent.models.schemas import Poi
 from food_agent.tools.base import PoiSearchTool
 
@@ -16,6 +18,12 @@ def _to_float(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+def _clamp_rating(value: float | None) -> float | None:
+    """rating 钳制到 [0, 5]：None 透传，越界值收敛到边界，避免单个 POI 炸掉整次 search。"""
+    if value is None:
+        return None
+    return min(5.0, max(0.0, value))
 
 def build_amap_params(lnglat: tuple[float, float], types: list[str], keywords: str,
                       radius: int) -> dict:
@@ -57,7 +65,7 @@ class AmapPoiSearch(PoiSearchTool):
             pois.append(Poi(
                 id=item["id"], name=item["name"], address=item.get("address"),
                 category=item.get("type"),
-                rating=_to_float(biz.get("rating")),
+                rating=_clamp_rating(_to_float(biz.get("rating"))),
                 avg_price=_to_float(biz.get("cost")),
                 source="amap", lnglat=(lng, lat),
             ))

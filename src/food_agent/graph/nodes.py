@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 def parse_node(state: GraphState) -> dict:
-    msgs = [{"role": "user", "content": state["user_input"]}]
+    msgs = [
+        {"role": "system",
+         "content": "你是需求解析器。若用户是在对上一轮推荐结果追问/调整（如「太贵了」「换一家」「便宜点」），置 is_followup=true。"},
+        {"role": "user", "content": state["user_input"]},
+    ]
     parsed = complete_with_retry(msgs, response_format=ParsedRequest)
     return {"parsed": parsed}
 
@@ -24,21 +28,25 @@ def retrieve_node(state: GraphState) -> dict:
     parsed: ParsedRequest = state["parsed"]
     tools = get_enabled_tools()
     poi_tool = tools.get("poi")
-    pois: list[Poi] = []
+    coros = [_search_rag(parsed)]          # 向量召回：独立源，永远执行
     if poi_tool is not None and parsed.lnglat is not None:
-        # 并行：POI 检索 + 向量召回（冷启动为空）
-        loop_results = asyncio.run(_gather(poi_tool, parsed))
-        pois = loop_results[0] + loop_results[1]
+        coros.append(_search_poi(poi_tool, parsed))
+    chunks = asyncio.run(_gather(coros))
+    pois: list[Poi] = [p for chunk in chunks for p in chunk]
     return {"pois": pois}
 
 
-async def _gather(poi_tool, parsed):
-    return await asyncio.gather(_search_poi(poi_tool, parsed), _search_rag(parsed))
+async def _gather(coros: list) -> list:
+    return await asyncio.gather(*coros)
 
 
 async def _search_poi(poi_tool, parsed):
-    return poi_tool.search(parsed.categories[0] if parsed.categories else "",
-                           parsed.lnglat, 3000, parsed.categories)
+    try:
+        return poi_tool.search(parsed.categories[0] if parsed.categories else "",
+                               parsed.lnglat, 3000, parsed.categories)
+    except Exception:
+        logger.warning("POI 检索失败，降级为空", exc_info=True)
+        return []
 
 
 async def _search_rag(parsed):

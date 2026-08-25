@@ -5,10 +5,16 @@ from langgraph.graph import END, StateGraph
 from food_agent.graph import nodes
 from food_agent.graph.state import GraphState
 
+FOLLOWUP_KEYWORDS = ("太贵", "贵了", "换一家", "换", "便宜")
+
 
 def route_after_parse(state: GraphState) -> str:
-    """追问路由：判定为追问则跳过检索、回到排序复用候选。"""
-    return "rank" if state["parsed"].is_followup else "retrieve"
+    """追问路由：LLM 判定 + 关键词规则兜底，命中则跳过检索、回到排序复用候选。"""
+    if state["parsed"].is_followup:
+        return "rank"
+    if any(kw in (state["user_input"] or "") for kw in FOLLOWUP_KEYWORDS):
+        return "rank"
+    return "retrieve"
 
 
 def build_graph(checkpointer):

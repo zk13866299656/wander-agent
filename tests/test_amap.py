@@ -1,4 +1,9 @@
-from food_agent.tools.amap import AmapPoiSearch, build_amap_params, map_category_to_types
+from food_agent.tools.amap import (
+    AmapPoiSearch,
+    build_amap_params,
+    map_category_to_types,
+)
+
 
 def test_map_category_to_types_falls_back_to_keywords():
     # 不认识「日料」分类码时返回空，靠 keywords 兜底
@@ -60,6 +65,26 @@ def test_amap_search_missing_biz_ext_rating_is_none(monkeypatch):
     pois = tool.search(query="日料", location=(120.15, 30.28), radius=3000, categories=["日料"])
     assert len(pois) == 1
     assert pois[0].rating is None
+
+def test_amap_search_clamps_rating(monkeypatch):
+    class FakeResp:
+        def json(self):
+            return {"status": "1", "pois": [
+                {"id": "1", "name": "超高评分店", "biz_ext": {"rating": "6.7"},
+                 "location": "120.15,30.28", "type": "日料店"},
+                {"id": "2", "name": "低分店", "biz_ext": {"rating": "0.5"},
+                 "location": "120.15,30.28", "type": "日料店"},
+            ]}
+        def raise_for_status(self):
+            return None
+    def fake_get(*a, **k):
+        return FakeResp()
+    monkeypatch.setattr("food_agent.tools.amap.httpx.get", fake_get)
+    tool = AmapPoiSearch(api_key="test")
+    pois = tool.search(query="日料", location=(120.15, 30.28), radius=3000, categories=["日料"])
+    assert pois[0].rating == 5.0
+    assert pois[1].rating == 0.5
+
 
 def test_amap_search_non_numeric_rating_is_none(monkeypatch):
     class FakeResp:
