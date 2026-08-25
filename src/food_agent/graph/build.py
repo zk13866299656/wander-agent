@@ -9,11 +9,16 @@ FOLLOWUP_KEYWORDS = ("太贵", "贵了", "换一家", "换", "便宜")
 
 
 def route_after_parse(state: GraphState) -> str:
-    """追问路由：LLM 判定 + 关键词规则兜底，命中则跳过检索、回到排序复用候选。"""
-    if state["parsed"].is_followup:
-        return "rank"
-    if any(kw in (state["user_input"] or "") for kw in FOLLOWUP_KEYWORDS):
-        return "rank"
+    """追问路由：LLM 判定 + 关键词规则兜底，命中则跳过检索、回到排序复用候选。
+
+    仅当已有候选可复用（pois 非空，来自上一轮 checkpoint）时才可能判定为追问；
+    否则（首轮消息，即使含「便宜/换」等词）正常检索，避免跳到 rank 却无候选。
+    """
+    if state.get("pois"):
+        if state["parsed"].is_followup:
+            return "rank"
+        if any(kw in (state["user_input"] or "") for kw in FOLLOWUP_KEYWORDS):
+            return "rank"
     return "retrieve"
 
 

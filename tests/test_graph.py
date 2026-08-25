@@ -79,7 +79,17 @@ def test_rag_runs_without_poi_tool(tmp_path):
 
 
 def test_followup_keyword_routes_to_rank():
-    """追问关键词兜底：LLM 未判 is_followup 时，关键词仍应路由到 rank。"""
+    """追问关键词兜底：LLM 未判 is_followup 时，有候选可复用则关键词路由到 rank。"""
     parsed = ParsedRequest(location="杭州西湖", is_followup=False)
-    assert route_after_parse({"parsed": parsed, "user_input": "换一家便宜点的"}) == "rank"
-    assert route_after_parse({"parsed": parsed, "user_input": "杭州西湖日料"}) == "retrieve"
+    pois = [Poi(id="1", name="某日料", source="amap")]
+    # 有候选可复用 → 关键词兜底路由到 rank
+    assert route_after_parse({"parsed": parsed, "user_input": "换一家便宜点的", "pois": pois}) == "rank"
+    # 有候选但无关键词 → 正常检索
+    assert route_after_parse({"parsed": parsed, "user_input": "杭州西湖日料", "pois": pois}) == "retrieve"
+
+
+def test_followup_keyword_not_misrouted_on_first_turn():
+    """首轮消息即使含「便宜/换」等词、无候选可复用，也不应误判为追问。"""
+    parsed = ParsedRequest(location="杭州西湖", is_followup=False)
+    assert route_after_parse({"parsed": parsed, "user_input": "杭州便宜的日料"}) == "retrieve"
+    assert route_after_parse({"parsed": parsed, "user_input": "换一家近点的"}) == "retrieve"
