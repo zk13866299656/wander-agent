@@ -23,5 +23,8 @@ env/
 # 向量库本地持久化
 chroma_data/
 
+# LangGraph checkpointer 本地落库
+checkpoints.sqlite
+
 # Claude Code 本地配置
 .claude/
