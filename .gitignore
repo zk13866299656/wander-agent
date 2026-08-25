@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# 环境变量 / 密钥
+.env
+.env.*
+!.env.example
+
+# IDE / 编辑器
+.vscode/
+.idea/
+.DS_Store
+
+# 向量库本地持久化
+chroma_data/
+
+# Claude Code 本地配置
+.claude/
