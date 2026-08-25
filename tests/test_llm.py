@@ -1,0 +1,32 @@
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from food_agent.llm.client import complete_with_retry
+
+
+def test_retry_on_failure():
+    with patch("food_agent.llm.client.build_llm") as mk:
+        mk.return_value.invoke.side_effect = [
+            RuntimeError("x"),
+            RuntimeError("y"),
+            SimpleNamespace(content="ok"),
+        ]
+        out = complete_with_retry([{"role": "user", "content": "hi"}], retries=3)
+        assert out == "ok"
+        assert mk.return_value.invoke.call_count == 3
+
+
+def test_structured_output_path():
+    class DummyFormat:
+        pass
+
+    with patch("food_agent.llm.client.build_llm") as mk:
+        structured_llm = mk.return_value.with_structured_output.return_value
+        structured_llm.invoke.return_value = SimpleNamespace(name="parsed")
+        out = complete_with_retry(
+            [{"role": "user", "content": "hi"}],
+            response_format=DummyFormat,
+        )
+        assert out.name == "parsed"
+        mk.return_value.with_structured_output.assert_called_once_with(DummyFormat)
+        mk.return_value.invoke.assert_not_called()
