@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Request
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+
+from food_agent.graph.build import build_graph
+
+NODE_NAMES = {"parse", "retrieve", "extract", "rank", "card", "memory"}
+DEFAULT_CHECKPOINT_PATH = "./checkpoints.sqlite"
+
+
+class ChatIn(BaseModel):
+    thread_id: str
+    message: str
+
+
+def create_app(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH) -> FastAPI:
+    """Build the FastAPI app; checkpointer + graph are created lazily in lifespan.
+
+    A sync ``SqliteSaver`` has no async methods (``aget_tuple`` raises
+    ``NotImplementedError``), so it cannot back ``astream_events``; use
+    ``AsyncSqliteSaver`` instead. Graph nodes stay synchronous — LangGraph runs
+    them in a worker thread under ``astream_events``.
+    """
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        async with AsyncSqliteSaver.from_conn_string(checkpoint_path) as saver:
+            app.state.graph = build_graph(saver)
+            yield
+
+    app = FastAPI(title="Wander 本地生活推荐 Agent", lifespan=lifespan)
+
+    @app.post("/chat")
+    async def chat(body: ChatIn, request: Request) -> EventSourceResponse:
+        graph = getattr(request.app.state, "graph", None)
+        if graph is None:
+            raise HTTPException(status_code=503, detail="graph not initialized")
+
+        async def event_stream() -> AsyncIterator[dict]:
+            config = {"configurable": {"thread_id": body.thread_id}}
+            async for event in graph.astream_events(
+                {"user_input": body.message}, config, version="v2"
+            ):
+                kind = event["event"]
+                name = event.get("name")
+                if kind == "on_chain_start" and name in NODE_NAMES:
+                    yield {"event": "node", "data": name}
+                elif kind == "on_chain_end" and name == "card":
+                    cards = event["data"]["output"]["cards"]
+                    payload = [card.model_dump(mode="json") for card in cards]
+                    yield {"event": "cards", "data": json.dumps(payload, ensure_ascii=False)}
+
+        return EventSourceResponse(event_stream())
+
+    return app
+
+
+app = create_app()
