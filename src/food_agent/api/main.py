@@ -27,6 +27,7 @@ FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 class ChatIn(BaseModel):
     thread_id: str
     message: str
+    lnglat: tuple[float, float] | None = None
 
 
 class FavoriteIn(BaseModel):
@@ -58,8 +59,11 @@ def create_app(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH) -> FastAPI:
 
         async def event_stream() -> AsyncIterator[dict]:
             config = {"configurable": {"thread_id": body.thread_id}}
+            initial_state: dict = {"user_input": body.message}
+            if body.lnglat is not None:
+                initial_state["lnglat"] = body.lnglat
             async for event in graph.astream_events(
-                {"user_input": body.message}, config, version="v2"
+                initial_state, config, version="v2"
             ):
                 kind = event["event"]
                 name = event.get("name")

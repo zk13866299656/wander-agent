@@ -113,3 +113,13 @@ def test_parse_node_keeps_lnglat_when_present():
         out = parse_node({"user_input": "杭州西湖附近日料"})
     assert out["parsed"].lnglat == (120.15, 30.28)
     mk_geo.assert_not_called()
+
+
+def test_parse_node_prefers_browser_lnglat_over_geocode():
+    """浏览器定位（state.lnglat）优先于地理编码，命中后不再调 geocode。"""
+    req = ParsedRequest(location="附近", categories=["日料"], lnglat=None)
+    with patch("food_agent.graph.nodes.complete_with_retry", return_value=req), \
+         patch("food_agent.graph.nodes.geocode") as mk_geo:
+        out = parse_node({"user_input": "附近日料", "lnglat": (116.40, 39.90)})
+    assert out["parsed"].lnglat == (116.40, 39.90)
+    mk_geo.assert_not_called()

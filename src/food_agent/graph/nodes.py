@@ -23,11 +23,14 @@ def parse_node(state: GraphState) -> dict:
         {"role": "user", "content": state["user_input"]},
     ]
     parsed = complete_with_retry(msgs, response_format=ParsedRequest)
-    # LLM 通常拿不到经纬度：用地名走一次高德地理编码补齐，检索才有中心点可用
-    if parsed.lnglat is None and parsed.location:
+    # 经纬度来源优先级：LLM 已给 > 浏览器定位（state）> 高德地理编码
+    lnglat = parsed.lnglat
+    if lnglat is None:
+        lnglat = state.get("lnglat")
+    if lnglat is None and parsed.location:
         lnglat = geocode(parsed.location, settings.amap_api_key)
-        if lnglat is not None:
-            parsed = parsed.model_copy(update={"lnglat": lnglat})
+    if lnglat is not None and parsed.lnglat != lnglat:
+        parsed = parsed.model_copy(update={"lnglat": lnglat})
     return {"parsed": parsed}
 
 

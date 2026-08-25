@@ -7,6 +7,7 @@ from food_agent.models.schemas import Candidate, ParsedRequest, Poi, Recommendat
 
 class GraphState(TypedDict, total=False):
     user_input: str
+    lnglat: tuple[float, float] | None
     parsed: ParsedRequest
     pois: list[Poi]
     candidates: list[Candidate]

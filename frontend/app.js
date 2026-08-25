@@ -2,6 +2,30 @@ const threadId = "t" + Math.random().toString(36).slice(2);
 const traceEl = document.getElementById("trace");
 const cardsEl = document.getElementById("cards");
 let currentCards = [];
+let currentLnglat = null;
+
+document.getElementById("locate").onclick = () => {
+  const status = document.getElementById("loc-status");
+  if (!navigator.geolocation) {
+    status.textContent = "浏览器不支持定位";
+    return;
+  }
+  status.textContent = "定位中…";
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      currentLnglat = [pos.coords.longitude, pos.coords.latitude];
+      status.textContent =
+        "已定位 (" +
+        pos.coords.longitude.toFixed(4) + ", " +
+        pos.coords.latitude.toFixed(4) + ")";
+    },
+    (err) => {
+      currentLnglat = null;
+      status.textContent = "定位失败：" + err.message;
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+};
 
 document.getElementById("send").onclick = async () => {
   const message = document.getElementById("msg").value;
@@ -10,7 +34,7 @@ document.getElementById("send").onclick = async () => {
   const resp = await fetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ thread_id: threadId, message }),
+    body: JSON.stringify({ thread_id: threadId, message, lnglat: currentLnglat }),
   });
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
