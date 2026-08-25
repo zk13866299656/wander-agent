@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -13,6 +15,7 @@ from food_agent.graph.build import build_graph
 
 NODE_NAMES = {"parse", "retrieve", "extract", "rank", "card", "memory"}
 DEFAULT_CHECKPOINT_PATH = "./checkpoints.sqlite"
+FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 
 
 class ChatIn(BaseModel):
@@ -58,6 +61,14 @@ def create_app(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH) -> FastAPI:
                     yield {"event": "cards", "data": json.dumps(payload, ensure_ascii=False)}
 
         return EventSourceResponse(event_stream())
+
+    @app.get("/")
+    async def index() -> FileResponse:
+        return FileResponse(FRONTEND_DIR / "index.html")
+
+    @app.get("/app.js")
+    async def app_js() -> FileResponse:
+        return FileResponse(FRONTEND_DIR / "app.js")
 
     return app
 

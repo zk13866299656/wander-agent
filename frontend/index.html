@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>Wander · 吃喝玩乐推荐</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; }
+    #trace { color: #888; font-size: 14px; min-height: 1.5em; }
+    .card { border: 1px solid #eee; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }
+    .card .name { font-size: 18px; font-weight: 600; }
+    .card .meta { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Wander · 吃喝玩乐推荐</h1>
+  <input id="msg" placeholder="试试：杭州西湖附近，性价比高的日料" style="width:70%" />
+  <button id="send">推荐</button>
+  <div id="trace"></div>
+  <div id="cards"></div>
+  <script src="app.js"></script>
+</body>
+</html>

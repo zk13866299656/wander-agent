@@ -28,6 +28,16 @@ Wander 是一个「吃 / 喝 / 玩 / 乐」本地生活推荐 Agent。用户用�
 | Embedding | SiliconFlow（备选本地 `bge-small-zh`） |
 | 前端 | 原生 HTML + JS + SSE |
 
+## 快速开始
+
+1. `pip install -e ".[dev]"`
+2. `cp .env.example .env` 并填入 `DEEPSEEK_API_KEY`、`AMAP_API_KEY`、`MYSQL_URL`
+3. `alembic upgrade head`
+4. `uvicorn food_agent.api.main:app --port 8000`
+5. 浏览器打开 http://localhost:8000
+
+> 提示：如果切换 embedding（配置或清空 `SILICONFLOW_API_KEY`），需先删除 `./chroma_data`（不同 embedding 的向量维度不一致，混用会导致检索失败）。
+
 ## 架构
 
 ```

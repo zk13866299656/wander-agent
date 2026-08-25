@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from food_agent.graph.state import GraphState
 from food_agent.llm.client import complete_with_retry
+from food_agent.memory.extract import extract_preferences
 from food_agent.models.schemas import ParsedRequest, Poi, RecommendationCard
 from food_agent.ranking.scorer import rank
+from food_agent.storage.db import get_session, upsert_preference
 from food_agent.tools.registry import get_enabled_tools
+
+logger = logging.getLogger(__name__)
 
 
 def parse_node(state: GraphState) -> dict:
@@ -66,5 +71,16 @@ def card_node(state: GraphState) -> dict:
 
 
 def memory_node(state: GraphState) -> dict:
-    # 偏好记忆写入（Task 8 的 extract + upsert），MVP 先占位，Task 12 接通
+    # 偏好记忆写入：extract 抽取 + upsert 持久化；失败仅记日志、降级不影响主链路。
+    try:
+        prefs = extract_preferences(state["user_input"])
+        if prefs:
+            session = get_session()
+            try:
+                for p in prefs:
+                    upsert_preference(session, p)
+            finally:
+                session.close()
+    except Exception:
+        logger.warning("memory_node 偏好记忆写入失败", exc_info=True)
     return {}

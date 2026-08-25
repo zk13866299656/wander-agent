@@ -21,13 +21,14 @@ def test_full_flow_with_mocked_tools(tmp_path):
             return [poi]
 
     with patch("food_agent.graph.nodes.complete_with_retry", return_value=req), \
+         patch("food_agent.graph.nodes.extract_preferences", return_value=[]), \
          patch("food_agent.graph.nodes.get_enabled_tools", return_value={"poi": FakePoiTool()}), \
-         patch("food_agent.rag.store.VectorStore", return_value=FakeVectorStore()):
-        with SqliteSaver.from_conn_string(str(tmp_path / "ckpt.sqlite")) as ckpt:
-            graph = build_graph(ckpt)
-            result = graph.invoke(
-                {"user_input": "杭州西湖附近日料"},
-                {"configurable": {"thread_id": "t1"}},
-            )
+         patch("food_agent.rag.store.VectorStore", return_value=FakeVectorStore()), \
+         SqliteSaver.from_conn_string(str(tmp_path / "ckpt.sqlite")) as ckpt:
+        graph = build_graph(ckpt)
+        result = graph.invoke(
+            {"user_input": "杭州西湖附近日料"},
+            {"configurable": {"thread_id": "t1"}},
+        )
     assert len(result["cards"]) == 1
     assert result["cards"][0].name == "某日料"

@@ -40,6 +40,7 @@ async def test_chat_streams_nodes_and_cards(tmp_path, sse_cleanup):
 
     app = create_app()
     with patch("food_agent.graph.nodes.complete_with_retry", return_value=req), \
+         patch("food_agent.graph.nodes.extract_preferences", return_value=[]), \
          patch("food_agent.graph.nodes.get_enabled_tools", return_value={"poi": FakePoiTool()}), \
          patch("food_agent.rag.store.VectorStore", return_value=FakeVectorStore()):
         async with AsyncSqliteSaver.from_conn_string(str(tmp_path / "ckpt.sqlite")) as saver:
