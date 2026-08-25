@@ -10,6 +10,13 @@ def map_category_to_types(categories: list[str]) -> list[str]:
     这里仅作兜底（返回空表示不传 types、改用 keywords）。"""
     return []
 
+def _to_float(value) -> float | None:
+    """非数字字符串（如 "N/A"）或空值兜底返回 None，避免 ValueError 中断整个 search。"""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
 def build_amap_params(lnglat: tuple[float, float], types: list[str], keywords: str,
                       radius: int) -> dict:
     params = {
@@ -38,13 +45,20 @@ class AmapPoiSearch(PoiSearchTool):
             return []
         pois: list[Poi] = []
         for item in data.get("pois", []):
+            loc = item.get("location") or ""
+            parts = loc.split(",")
+            if len(parts) != 2:
+                continue
+            try:
+                lng, lat = float(parts[0]), float(parts[1])
+            except ValueError:
+                continue
             biz = item.get("biz_ext") or {}
-            lng, lat = item["location"].split(",")
             pois.append(Poi(
                 id=item["id"], name=item["name"], address=item.get("address"),
                 category=item.get("type"),
-                rating=float(biz["rating"]) if biz.get("rating") else None,
-                avg_price=float(biz["cost"]) if biz.get("cost") else None,
-                source="amap", lnglat=(float(lng), float(lat)),
+                rating=_to_float(biz.get("rating")),
+                avg_price=_to_float(biz.get("cost")),
+                source="amap", lnglat=(lng, lat),
             ))
         return pois
