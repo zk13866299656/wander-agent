@@ -3,6 +3,7 @@ from unittest.mock import patch
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from food_agent.graph.build import build_graph, route_after_parse
+from food_agent.graph.nodes import parse_node
 from food_agent.models.schemas import ParsedRequest, Poi
 
 
@@ -93,3 +94,22 @@ def test_followup_keyword_not_misrouted_on_first_turn():
     parsed = ParsedRequest(location="杭州西湖", is_followup=False)
     assert route_after_parse({"parsed": parsed, "user_input": "杭州便宜的日料"}) == "retrieve"
     assert route_after_parse({"parsed": parsed, "user_input": "换一家近点的"}) == "retrieve"
+
+
+def test_parse_node_geocodes_location_when_lnglat_missing():
+    """LLM 未给出 lnglat 时，用地名走地理编码补齐坐标。"""
+    req = ParsedRequest(location="杭州西湖", categories=["日料"], lnglat=None)
+    with patch("food_agent.graph.nodes.complete_with_retry", return_value=req), \
+         patch("food_agent.graph.nodes.geocode", return_value=(120.15, 30.28)):
+        out = parse_node({"user_input": "杭州西湖附近日料"})
+    assert out["parsed"].lnglat == (120.15, 30.28)
+
+
+def test_parse_node_keeps_lnglat_when_present():
+    """LLM 已给 lnglat 时不再触发地理编码。"""
+    req = ParsedRequest(location="杭州西湖", categories=["日料"], lnglat=(120.15, 30.28))
+    with patch("food_agent.graph.nodes.complete_with_retry", return_value=req), \
+         patch("food_agent.graph.nodes.geocode") as mk_geo:
+        out = parse_node({"user_input": "杭州西湖附近日料"})
+    assert out["parsed"].lnglat == (120.15, 30.28)
+    mk_geo.assert_not_called()

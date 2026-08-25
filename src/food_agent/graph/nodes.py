@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from food_agent.config import settings
 from food_agent.graph.state import GraphState
 from food_agent.llm.client import complete_with_retry
 from food_agent.memory.extract import extract_preferences
 from food_agent.models.schemas import ParsedRequest, Poi, RecommendationCard
 from food_agent.ranking.scorer import rank
 from food_agent.storage.db import get_session, upsert_preference
+from food_agent.tools.amap import geocode
 from food_agent.tools.registry import get_enabled_tools
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,11 @@ def parse_node(state: GraphState) -> dict:
         {"role": "user", "content": state["user_input"]},
     ]
     parsed = complete_with_retry(msgs, response_format=ParsedRequest)
+    # LLM 通常拿不到经纬度：用地名走一次高德地理编码补齐，检索才有中心点可用
+    if parsed.lnglat is None and parsed.location:
+        lnglat = geocode(parsed.location, settings.amap_api_key)
+        if lnglat is not None:
+            parsed = parsed.model_copy(update={"lnglat": lnglat})
     return {"parsed": parsed}
 
 

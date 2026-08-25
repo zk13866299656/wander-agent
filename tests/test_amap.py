@@ -1,6 +1,9 @@
+import httpx
+
 from food_agent.tools.amap import (
     AmapPoiSearch,
     build_amap_params,
+    geocode,
     map_category_to_types,
 )
 
@@ -8,6 +11,37 @@ from food_agent.tools.amap import (
 def test_map_category_to_types_falls_back_to_keywords():
     # 不认识「日料」分类码时返回空，靠 keywords 兜底
     assert map_category_to_types(["日料"]) == []
+
+
+def test_geocode_parses_location(monkeypatch):
+    class FakeResp:
+        def json(self):
+            return {"status": "1", "geocodes": [{"location": "120.15,30.28"}]}
+        def raise_for_status(self):
+            return None
+    monkeypatch.setattr("food_agent.tools.amap.httpx.get", lambda *a, **k: FakeResp())
+    assert geocode("杭州西湖", "test") == (120.15, 30.28)
+
+
+def test_geocode_returns_none_when_no_key():
+    assert geocode("杭州西湖", "") is None
+
+
+def test_geocode_returns_none_when_empty_result(monkeypatch):
+    class FakeResp:
+        def json(self):
+            return {"status": "1", "geocodes": []}
+        def raise_for_status(self):
+            return None
+    monkeypatch.setattr("food_agent.tools.amap.httpx.get", lambda *a, **k: FakeResp())
+    assert geocode("不存在的鬼地方", "test") is None
+
+
+def test_geocode_returns_none_on_http_error(monkeypatch):
+    def fake_get(*a, **k):
+        raise httpx.HTTPError("boom")
+    monkeypatch.setattr("food_agent.tools.amap.httpx.get", fake_get)
+    assert geocode("杭州西湖", "test") is None
 
 def test_build_amap_params_uses_keywords_when_no_types():
     params = build_amap_params(lnglat=(120.15, 30.28), types=[], keywords="日料", radius=3000)

@@ -6,6 +6,7 @@ from food_agent.models.schemas import Poi
 from food_agent.tools.base import PoiSearchTool
 
 AMAP_AROUND_URL = "https://restapi.amap.com/v5/place/around"
+AMAP_GEOCODE_URL = "https://restapi.amap.com/v3/geocode/geo"
 
 def map_category_to_types(categories: list[str]) -> list[str]:
     """品类关键词 → 高德 types 分类码。MVP 由 LLM 在解析阶段直接产出 amap_types，
@@ -24,6 +25,31 @@ def _clamp_rating(value: float | None) -> float | None:
     if value is None:
         return None
     return min(5.0, max(0.0, value))
+
+def geocode(address: str, api_key: str) -> tuple[float, float] | None:
+    """地名 → 经纬度（高德地理编码）。无 Key / 地址为空 / 请求失败 / 无结果均返回 None，不抛异常。"""
+    if not api_key or not address:
+        return None
+    try:
+        resp = httpx.get(AMAP_GEOCODE_URL, params={"key": api_key, "address": address}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPError:
+        return None
+    if data.get("status") != "1":
+        return None
+    geocodes = data.get("geocodes") or []
+    if not geocodes:
+        return None
+    loc = geocodes[0].get("location") or ""
+    parts = loc.split(",")
+    if len(parts) != 2:
+        return None
+    try:
+        return float(parts[0]), float(parts[1])
+    except ValueError:
+        return None
+
 
 def build_amap_params(lnglat: tuple[float, float], types: list[str], keywords: str,
                       radius: int) -> dict:
