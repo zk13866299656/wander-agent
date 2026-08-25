@@ -80,6 +80,7 @@ wander/
     ├── test_ranking.py
     ├── test_amap.py
     ├── test_storage.py
+    ├── test_favorite.py
     ├── test_memory.py
     ├── test_rag.py
     └── test_graph.py                  # 集成：mock 工具跑通整条 graph
@@ -1393,12 +1394,99 @@ git commit -m "feat: 前端卡片渲染 + 端到端闭环 + README 快速开始"
 
 ---
 
+## Task 13: 收藏链路（写库 + 向量索引）
+
+**Files:**
+- Create: `tests/test_favorite.py`
+- Modify: `src/food_agent/storage/db.py`, `src/food_agent/rag/store.py`, `src/food_agent/api/main.py`, `frontend/index.html`, `frontend/app.js`
+
+**Interfaces:**
+- Consumes: `FavoriteRow`（Task 6）、`VectorStore.add_pois`（Task 9）、`Poi`（Task 2）。
+- Produces: `add_favorite(session, poi: Poi) -> None`；`POST /favorite`（body `{"poi": {...Poi 字段}}`，写 favorite 表 + 向量库）；前端收藏按钮。
+
+- [ ] **Step 1: 写失败测试 `tests/test_favorite.py`**
+
+```python
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from food_agent.models.schemas import Poi
+from food_agent.storage.db import add_favorite
+from food_agent.storage.models import Base, FavoriteRow
+
+@pytest.fixture()
+def db_session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as s:
+        yield s
+
+def test_add_favorite_dedupes(db_session):
+    poi = Poi(id="1", name="某日料", source="amap")
+    add_favorite(db_session, poi)
+    add_favorite(db_session, poi)
+    assert db_session.query(FavoriteRow).filter_by(poi_id="1").count() == 1
+```
+
+- [ ] **Step 2: 跑测试确认失败**
+
+Run: `pytest tests/test_favorite.py -v`
+Expected: FAIL（`add_favorite` 不存在）
+
+- [ ] **Step 3: 在 `storage/db.py` 加 `add_favorite`**
+
+```python
+from food_agent.models.schemas import Poi
+from food_agent.storage.models import FavoriteRow
+
+def add_favorite(session: Session, poi: Poi) -> None:
+    if session.query(FavoriteRow).filter_by(poi_id=poi.id).one_or_none() is None:
+        session.add(FavoriteRow(poi_id=poi.id, name=poi.name))
+        session.commit()
+```
+
+- [ ] **Step 4: 跑测试确认通过**
+
+Run: `pytest tests/test_favorite.py -v`
+Expected: 1 passed
+
+- [ ] **Step 5: 在 `api/main.py` 加 `POST /favorite`**
+
+```python
+from food_agent.models.schemas import Poi
+from food_agent.storage.db import add_favorite, get_session
+from food_agent.rag.store import VectorStore
+
+class FavoriteIn(BaseModel):
+    poi: Poi
+
+@app.post("/favorite")
+async def favorite(body: FavoriteIn):
+    with get_session() as s:
+        add_favorite(s, body.poi)
+    VectorStore().add_pois([body.poi])  # 同步进向量库，供语义召回
+    return {"ok": True}
+```
+
+- [ ] **Step 6: 前端加收藏按钮**
+
+`app.js` 卡片渲染处给每张卡片加一个「收藏」按钮，点击 `fetch("/favorite", {method:"POST", body: JSON.stringify({poi: {...}})})`。卡片 `data-*` 属性暂存 Poi 原始字段，供回传。
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/food_agent/storage/db.py src/food_agent/api/main.py src/food_agent/rag/store.py frontend tests/test_favorite.py
+git commit -m "feat: 收藏链路（写 favorite 表 + 向量索引 + POST /favorite）"
+```
+
+---
+
 ## 自查清单（Self-Review 结论）
 
-- **Spec 覆盖**：核心闭环（Task 2/3/10/11）、多轮偏好（Task 8 + Task 12 接通）、RAG（Task 9）、收藏/历史（Task 6 建表，收藏的写入 UI 未在 MVP 范围，spec §2 明确「收藏/历史」为 MVP，故 Task 12 端到端验收里补一条「收藏写入」待办——见下方 Gap）。
+- **Spec 覆盖**：核心闭环（Task 2/3/10/11）、多轮偏好（Task 8 + Task 12 接通）、RAG（Task 9）、收藏/历史（Task 6 建表 + Task 13 收藏写入链路）。
 - **占位扫描**：`extract_node` 的「多源合并抽取」、`memory_node` 的「接通」、`VectorStore.search` 的「回查」三处标注为 Task 12 补全，均已给出目标接口，非无界 TODO。
 - **类型一致性**：`Poi`/`Candidate`/`RecommendationCard`/`ParsedRequest` 字段全程统一；`rank` / `score_candidate` / `get_enabled_tools` / `complete_with_retry` 签名跨任务一致。
 
-### Gap（需在实现前确认）
+### 收藏链路
 
-- 收藏写入入口（`favorite` 表已有，但「前端点收藏 → 写库 → 进向量库」的链路未拆成独立任务）。建议 Task 12 增加一步「收藏按钮 + POST /favorite」；若要作为 MVP，单独拆一个 Task 13 更清晰。
+- 已拆为独立 Task 13（收藏写库 + 向量索引 + `POST /favorite` + 前端按钮），见上方。
