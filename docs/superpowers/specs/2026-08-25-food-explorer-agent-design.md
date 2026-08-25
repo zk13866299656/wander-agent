@@ -1,7 +1,7 @@
 # 本地生活推荐 Agent 设计文档（Wander）
 
 - 日期：2026-08-25
-- 状态：待评审
+- 状态：已评审（2026-08-25）
 - 作者：用户 + Claude Code
 
 ## 1. 目标与定位
@@ -42,7 +42,8 @@
 | Agent 编排 | LangGraph | 状态图建模多步推荐流程 |
 | LLM | DeepSeek（`deepseek-chat`） | 延续上个项目，有 Key、成本低 |
 | 后端 | FastAPI + SSE | 主流、原生流式 |
-| 数据库 | MySQL 8+（SQLAlchemy + Alembic） | 延续上个项目技术栈 |
+| 数据库 | MySQL 8+（SQLAlchemy + Alembic） | 仅存业务数据（会话/消息/收藏/偏好） |
+| 会话持久化 | SQLite（`langgraph-checkpoint-sqlite`） | 官方支持、零配置，单用户 demo 足够 |
 | 向量库 | Chroma（本地持久化） | 零额外服务 |
 | Embedding | 硅基流动 SiliconFlow 免费 API（备选本地 `bge-small-zh`） | DeepSeek 无 embedding 接口 |
 | 前端 | 原生 HTML + JS + SSE | 复用上个项目模式 |
@@ -80,8 +81,11 @@
 └─────────────────┘
 ```
 
-- **多轮/追问**：靠 LangGraph `checkpointer` 持久化会话状态。用户说「太贵了换便宜的」时，不重新检索，回到「排序」节点对上一轮候选重新过滤排序。
+- **多轮/追问**：靠 LangGraph `checkpointer`（SQLite）持久化会话状态。「追问 vs 新查询」由需求解析节点内的轻量路由判定：LLM 判断 + 关键词规则兜底（「太贵 / 换 / 便宜」等）。判定为追问时，不重新检索，回到「排序」节点对上一轮候选重新过滤排序；判定为新查询则走完整检索链路。
 - **结构化输出**：LLM 抽取 / 生成均通过 Pydantic schema 约束，保证下游排序与前端渲染拿到稳定 JSON。
+- **流式输出**：通过 LangGraph `astream_events` + FastAPI SSE 把「节点流转 + 工具调用轨迹」推到前端，粒度控制在节点级 + 工具调用级，不做 token 级。
+- **并行检索实现**：三个检索在「检索」节点内部用 `asyncio.gather` 并行，graph 结构保持线性。
+- **向量召回冷启动**：首次查询无历史收藏时，语义召回返回空，不影响主链路。
 
 ## 5. 工具层（可拔插，不硬编码）
 
@@ -104,15 +108,20 @@ class WebSearchTool(ABC):      # 搜口碑：热门 / 平台提及
 
 **口碑信号的现实处理**：主用 POI 自带的「评分 + 评论数」（高德/百度都有，免费国内可用）；`WebSearchTool` 作为「热门/平台提及」加分项。**未配置搜索 Key 时自动降级为纯 POI 评分**，主链路照常跑通，演示不卡在第三方额度。
 
+**评分缺失降级**：高德普通 POI 仅认证商户带 `biz_ext.rating`，大量小店无评分。打分时按「评分 → 评论数/热度 → 中性分」逐级兜底，不直接淘汰无评分项。
+
+**品类分类码映射**：不维护大静态映射表，由需求解析节点用 LLM 把品类映射到高德 `types` 分类码，并以 `keywords` 关键词搜索兜底，覆盖 LLM 不认识的品类。
+
 ## 6. 数据模型（MySQL）
 
 | 表 | 用途 |
 |---|---|
-| `session` | 会话（LangGraph checkpointer 持久化对话状态） |
-| `message` | 对话消息（用户输入 + Agent 输出） |
+| `session` | 会话元数据（thread_id、创建时间、标题摘要），供「历史会话列表」展示；thread_id 关联 SQLite checkpointer |
+| `message` | 对话消息（用户输入 + Agent 输出），供前端展示历史 |
 | `favorite` | 收藏（用户收藏的店铺） |
 | `preference` | 偏好记忆（封闭类型 + 同类 upsert 覆盖） |
-| `candidate` | 候选店缓存（供追问时复用，避免重复检索） |
+
+候选店不单独建表 —— 追问复用依赖 checkpointer state 中已保存的候选（SQLite 持久化），避免与业务库重复存储。
 
 偏好记忆沿用上个项目的成熟思路：**封闭类型 + 唯一键 + 同类 upsert**，保证表不随对话膨胀。
 
@@ -152,6 +161,8 @@ wander/
 └── tests/
 ```
 
+> 本地环境：MySQL 8 直连（本机已装）；`.env` 配置 MySQL 连接 + 各 API Key。暂不引入 Docker，后续如需再补 docker-compose。
+
 ## 10. 成功标准（DoD）
 
 - `pip install` + 填 `.env`（高德 Key、DeepSeek Key）即可本地跑通。
@@ -160,3 +171,16 @@ wander/
 - 未配 WebSearch Key 时，仅靠高德 POI 也能完整出结果。
 - 工具 provider 可仅通过配置切换，不改主流程。
 - 打分排序 / schema 校验有单元测试覆盖。
+
+## 11. 评审决策记录（2026-08-25）
+
+| 决策点 | 结论 |
+|---|---|
+| checkpointer 存储 | 官方 `langgraph-checkpoint-sqlite`；MySQL 仅存业务数据（session/message/favorite/preference） |
+| 候选店缓存 | 不单独建表，复用 checkpointer state |
+| 追问路由 | 需求解析节点内 LLM 判断 + 关键词规则兜底 |
+| 流式粒度 | 节点级 + 工具调用级（`astream_events` + SSE） |
+| 高德评分缺失 | 评分 → 评论数/热度 → 中性分 逐级兜底 |
+| 品类分类码 | LLM 映射 + `keywords` 兜底，不维护静态大表 |
+| 向量召回冷启动 | 空结果不影响主链路 |
+| 部署 | 本机 MySQL 8 直连，暂不引入 Docker |
