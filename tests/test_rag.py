@@ -1,7 +1,8 @@
 from unittest.mock import patch
 
 from food_agent.config import settings
-from food_agent.rag.store import SiliconFlowEmbedding, VectorStore
+from food_agent.models.schemas import Poi
+from food_agent.rag.store import SiliconFlowEmbedding, VectorStore, _poi_metadata
 
 
 def test_empty_store_returns_empty(monkeypatch):
@@ -46,6 +47,18 @@ def test_search_reconstructs_pois_from_metadata(monkeypatch):
     assert p.distance_m == 1000
     assert p.source == "amap"
     assert p.tags == ["标签1", "标签2"]
+
+
+def test_poi_metadata_omits_none_fields():
+    p = Poi(id="p1", name="某日料", category="日料", rating=None,
+            review_count=None, avg_price=None, distance_m=None,
+            source="amap", tags=["标签1", "标签2"])
+    meta = _poi_metadata(p)
+    assert meta["name"] == "某日料"
+    assert meta["source"] == "amap"
+    assert meta["tags"] == "标签1,标签2"
+    for key in ("rating", "review_count", "avg_price", "distance_m"):
+        assert key not in meta
 
 
 def test_siliconflow_embedding_request(monkeypatch):

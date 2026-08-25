@@ -73,19 +73,20 @@ class VectorStore:
 
 
 def _poi_metadata(p: Poi) -> dict:
-    """Poi → Chroma 元数据。Chroma 只接受标量，tags 以逗号拼接存字符串。"""
-    return {
-        "id": p.id,
+    """Poi → Chroma 元数据。Chroma 只接受标量且不接受 None，tags 以逗号拼接存字符串；
+    数值字段为 None 时直接省略（回查时 `.get()` 缺省即还原为 None）。"""
+    meta = {
         "name": p.name,
         "address": p.address or "",
         "category": p.category or "",
-        "rating": p.rating,
-        "review_count": p.review_count,
-        "avg_price": p.avg_price,
-        "distance_m": p.distance_m,
         "source": p.source,
         "tags": ",".join(p.tags),
     }
+    for key in ("rating", "review_count", "avg_price", "distance_m"):
+        value = getattr(p, key)
+        if value is not None:
+            meta[key] = value
+    return meta
 
 
 def _poi_from_metadata(poi_id: str, meta: dict) -> Poi:
