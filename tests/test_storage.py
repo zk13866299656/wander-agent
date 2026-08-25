@@ -21,6 +21,14 @@ def test_upsert_preference_same_key_value_overwrites(db_session):
     assert len(rows) == 1 and rows[0].value == "100" and rows[0].weight == 2.0
 
 
+def test_upsert_preference_multi_value_keys_coexist(db_session):
+    upsert_preference(db_session, Preference(key=PreferenceKey.DIET_TABOO, value="不吃辣"))
+    upsert_preference(db_session, Preference(key=PreferenceKey.DIET_TABOO, value="不吃香菜"))
+    rows = db_session.query(PreferenceRow).filter_by(key=PreferenceKey.DIET_TABOO.value).all()
+    assert len(rows) == 2
+    assert {r.value for r in rows} == {"不吃辣", "不吃香菜"}
+
+
 def test_session_row_roundtrip(db_session):
     db_session.add(SessionRow(thread_id="t1", title="找日料"))
     db_session.commit()
