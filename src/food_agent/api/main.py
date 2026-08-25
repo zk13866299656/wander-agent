@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +13,11 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from food_agent.graph.build import build_graph
+from food_agent.models.schemas import Poi
+from food_agent.rag.store import VectorStore
+from food_agent.storage.db import add_favorite, get_session
+
+logger = logging.getLogger(__name__)
 
 NODE_NAMES = {"parse", "retrieve", "extract", "rank", "card", "memory"}
 DEFAULT_CHECKPOINT_PATH = "./checkpoints.sqlite"
@@ -21,6 +27,10 @@ FRONTEND_DIR = Path(__file__).resolve().parents[3] / "frontend"
 class ChatIn(BaseModel):
     thread_id: str
     message: str
+
+
+class FavoriteIn(BaseModel):
+    poi: Poi
 
 
 def create_app(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH) -> FastAPI:
@@ -69,6 +79,17 @@ def create_app(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH) -> FastAPI:
     @app.get("/app.js")
     async def app_js() -> FileResponse:
         return FileResponse(FRONTEND_DIR / "app.js")
+
+    @app.post("/favorite")
+    def favorite(body: FavoriteIn) -> dict:
+        """收藏：写 favorite 表（主链路）+ 向量索引（尽力而为，失败仅降级）。"""
+        with get_session() as s:
+            add_favorite(s, body.poi)
+        try:
+            VectorStore().add_pois([body.poi])
+        except Exception:
+            logger.warning("收藏向量索引写入失败", exc_info=True)
+        return {"ok": True}
 
     return app
 

@@ -1,6 +1,7 @@
 const threadId = "t" + Math.random().toString(36).slice(2);
 const traceEl = document.getElementById("trace");
 const cardsEl = document.getElementById("cards");
+let currentCards = [];
 
 document.getElementById("send").onclick = async () => {
   const message = document.getElementById("msg").value;
@@ -39,9 +40,42 @@ document.getElementById("send").onclick = async () => {
 };
 
 function renderCards(cards) {
-  cardsEl.innerHTML = cards.map((c) => `
+  currentCards = cards;
+  cardsEl.innerHTML = cards.map((c, i) => `
     <div class="card">
       <div class="name">${c.name} ${"★".repeat(Math.round((c.rating || 0))) || ""}</div>
       <div class="meta">评分 ${c.rating ?? "—"} · 人均 ¥${c.avg_price ?? "—"} · ${c.distance_m ?? "—"}m · 综合 ${c.score.toFixed(2)}</div>
+      <button class="fav" data-fav="${i}">收藏</button>
     </div>`).join("");
 }
+
+cardsEl.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button.fav");
+  if (!btn) return;
+  const c = currentCards[Number(btn.dataset.fav)];
+  if (!c) return;
+  const poi = {
+    id: c.id,
+    name: c.name,
+    source: c.source,
+    rating: c.rating,
+    avg_price: c.avg_price,
+    distance_m: c.distance_m,
+    tags: c.tags,
+  };
+  try {
+    const resp = await fetch("/favorite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ poi }),
+    });
+    if (resp.ok) {
+      btn.textContent = "已收藏";
+      btn.disabled = true;
+    } else {
+      btn.textContent = "收藏失败";
+    }
+  } catch {
+    btn.textContent = "收藏失败";
+  }
+});

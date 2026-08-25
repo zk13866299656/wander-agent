@@ -44,6 +44,8 @@ class Candidate(Poi):
     source_notes: list[str] = Field(default_factory=list)
 
 class RecommendationCard(BaseModel):
+    id: str
+    source: str
     name: str
     rating: float | None
     avg_price: float | None

@@ -62,9 +62,9 @@ def rank_node(state: GraphState) -> dict:
 
 def card_node(state: GraphState) -> dict:
     cards = [
-        RecommendationCard(name=c.name, rating=c.rating, avg_price=c.avg_price,
-                           distance_m=c.distance_m, tags=c.tags, score=c.score,
-                           reasons=c.reasons)
+        RecommendationCard(id=c.id, source=c.source, name=c.name, rating=c.rating,
+                           avg_price=c.avg_price, distance_m=c.distance_m,
+                           tags=c.tags, score=c.score, reasons=c.reasons)
         for c in state["candidates"]
     ]
     return {"cards": cards}
